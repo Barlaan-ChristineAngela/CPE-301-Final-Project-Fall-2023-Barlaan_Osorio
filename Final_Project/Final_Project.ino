@@ -1,76 +1,97 @@
 #include <dht.h> //temp and humidity sensor
 #include <LiquidCrystal.h> //LCD
 
+#define DHT11_PIN 13 //temp and humidity sensor
+#define BUTTON_PIN 2 //start stop button
+
 dht DHT; //temp and humidity sensor
-const int RS = 11, EN = 12, D4 = 2, D5 = 3, D6 = 4, D7 = 5; //LCD pins
+
+const int RS = 11, EN = 12, D4 = 44, D5 = 46, D6 = 48, D7 = 50; //LCD
 LiquidCrystal lcd(RS, EN, D4, D5, D6, D7); //LCD
 
-#define DHT11_PIN 2 //temp and humidity sensor
-#define POWER_PIN 3 //water sensor
-#define SIGNAL_PIN A1 //water sensor
+int speedPin = 9; //fan motor
+int dir1 = 8; //fan motor
+int dir2 = 7; //fan motor
+int mSpeed = 90; //fan motor
+
+volatile bool buttonPressed = false; //button
+
+unsigned long lastUpdateTime = 0;
+const unsigned long updateInterval = 60000;
+
 
 void setup() {
   Serial.begin(9600);
+
+  //fan motor
+  pinMode(speedPin, OUTPUT);
+  pinMode(dir1, OUTPUT);
+  pinMode(dir2, OUTPUT);
+
+  //button
+  pinMode(BUTTON_PIN, INPUT);
+  attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), StartStopButtonISR, CHANGE);
 
 }
 
 void loop() {
 
   TempAndHumiditySensor();
+  FanMotor();
 
 }
+  
+//Christine
+void TempAndHumiditySensor(){
 
-void TempHumiditySensor(){
   int chk = DHT.read11(DHT11_PIN);
+  unsigned long currentTime = millis();
+  if(currentTime - lastUpdateTime >= updateInterval){
+    //print to LCD display
+    lcd.begin(16,2);
+    lcd.setCursor(0,0);
+    lcd.print("Temperature=");
+    lcd.print(DHT.temperature);
+    lcd.setCursor(0,1);
+    lcd.print("Humidity = ");
+    lcd.print(DHT.humidity);
 
-  /*for testing; do not include in final program
-  Serial.print("Temperature = ");
-  Serial.println(DHT.temperature);
-  Serial.print("Humidity = ");
-  Serial.println(DHT.humidity);
-  delay(1000);
-  */
-
-  //print to LCD display
-  lcd.clear();
-  lcd.setCursor(0,0);
-  lcd.print("Temperature = ");
-  lcd.print(DHT.temperature);
-  lcd.setCursor(1,0);
-  lcd.print("Humidity = ");
-  lcd.print(DHT.humidity);
-  delay(60000); //update every 1 minute (60 seconds)
+    lastUpdateTime = currentTime;
+  }
 }
 
-//must change code to use ADC method
-  void WaterSensor(){
-  int value = 0;
-
-  //from example slides
-  digitalWrite(POWER_PIN, HIGH);
-  delay(10);
-  value = analogRead(SIGNAL_PIN);
-  digitalWrite(POWER_PIN, LOW);
-
-  //for testing; do not include in final program
-  Serial.print ("Sensor value: ");
-  Serial.println(value);
-  delay(1000);
+void WaterSensor(){
 }
 
+//Christine
 void FanMotor(){
-
+  if(buttonPressed){
+    digitalWrite(dir1, HIGH);
+    digitalWrite(dir2, LOW);
+    analogWrite(speedPin, mSpeed);
+  }
+  else if(!buttonPressed){
+    digitalWrite(dir1, HIGH);
+    digitalWrite(dir2, LOW);
+    analogWrite(speedPin, 0);
+  }
 }
-
-/*void LCDDisplay(){
-
-}
-*/
 
 void RTCModule(){
-
 }
 
 void StepperMotor(){
-
 }
+
+//Christine
+void StartStopButtonISR() {
+  int button = digitalRead(BUTTON_PIN);
+  if (button == HIGH) {
+    buttonPressed = true; // Button is pressed, turn the fan ON
+  }
+  else{
+    buttonPressed = false;
+  }
+}
+
+ 
