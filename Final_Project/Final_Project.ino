@@ -16,8 +16,8 @@ int mSpeed = 90; //fan motor
 
 volatile bool buttonPressed = false; //button
 
-unsigned long lastUpdateTime = 0;
-const unsigned long updateInterval = 60000;
+unsigned long lastUpdateTime = 0; //LCD
+const unsigned long updateInterval = 60000; //LCD
 
 
 void setup() {
@@ -87,7 +87,7 @@ void StepperMotor(){
 void StartStopButtonISR() {
   int button = digitalRead(BUTTON_PIN);
   if (button == HIGH) {
-    buttonPressed = true; // Button is pressed, turn the fan ON
+    buttonPressed = true;
   }
   else{
     buttonPressed = false;

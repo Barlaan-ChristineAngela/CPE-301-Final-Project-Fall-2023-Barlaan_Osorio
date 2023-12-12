@@ -120,7 +120,6 @@ void checkWaterLevel(unsigned int input){
     //set ph3 low
     *portH &= 0xF7;
   }
-
 }
 
 void displayCurrentTime(){
