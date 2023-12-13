@@ -1,6 +1,7 @@
 #include <dht.h>
 #include <LiquidCrystal.h>
 #include <Stepper.h>
+#include <RTClib.h>
 
 //temp and humidity sensor
 dht DHT;
@@ -13,8 +14,12 @@ unsigned long lastUpdateTime = 0;
 const unsigned long updateInterval = 60000;
 
 //ADC, water sensor
-volatile unsigned char *portH = (unsigned char *) 0x102;
-volatile unsigned int *portDDRH = (unsigned *) 0x0101;
+volatile unsigned char *portF = (unsigned char*) 0x31;        //enable high (|= make 1s) or low (&= make 0s);
+volatile unsigned char *portDDRF = (unsigned char*) 0x30;     //input (&= make 0s), output (|= make 1s)
+volatile unsigned char *pin_f = (unsigned char*) 0x2F;        //read the state of the pin
+volatile unsigned char *portH = (unsigned char*) 0x102;        //enable high (|= make 1s) or low (&= make 0s);
+volatile unsigned char *portDDRH = (unsigned char*) 0x101;     //input (&= make 0s), output (|= make 1s)
+volatile unsigned char *pin_h = (unsigned char*) 0x100;  
 volatile unsigned char* my_ADMUX = (unsigned char*) 0x7C;
 volatile unsigned char* my_ADCSRB = (unsigned char*) 0x7B;
 volatile unsigned char* my_ADCSRA = (unsigned char*) 0x7A;
@@ -27,7 +32,7 @@ volatile unsigned char *pin_a = (unsigned char*) 0x20;        //read the state o
 
 //stepper motor
 const int stepsPerRevolution = 2038; //stepper motor
-Stepper myStepper = Stepper(stepsPerRevolution, 2, 4, 3, 5); //stepper motor
+Stepper myStepper = Stepper(stepsPerRevolution, 8, 10, 9, 11); //stepper motor
 volatile unsigned char *portB = (unsigned char *) 0x25; //stepper motor
 volatile unsigned int *portDDRB = (unsigned *) 0x24;
 volatile unsigned char *pin_b= (unsigned char *) 0x23;
@@ -56,49 +61,62 @@ volatile unsigned char *myUDR0   = (unsigned char*)0xC6;
 //button, ISR
 volatile unsigned char *portD = (unsigned char*) 0x2B;        //enable high (|= make 1s) or low (&= make 0s);
 volatile unsigned char *portDDRD = (unsigned char*) 0x2A;     //input (&= make 0s), output (|= make 1s)
-volatile unsigned char *pin_d = (unsigned char*) 0x29; 
+volatile unsigned char *pin_d = (unsigned char*) 0x29;        //read the state of the pin
 volatile bool buttonPressed = false;
+volatile bool buttonPrevState = false;
 
 void setup() {
-
-  //fan motor
-  //set PA0(pin 22), PA2(pin24), PA4(pin26) to output
-  *portDDRA |= 0b00010101;
 
   //LCD
   lcd.begin(16,2);
 
-  //ADC, water sensor, stepper motor
-  adc_init();
-  //set pb6 and pb7 to input
-  *portDDRB= 0x3F;
-  //set ph4 and ph3 to output
-  *portDDRH= 0x18;
-  //set ph4 and to high for water sensor
-  *portH= 0x10;
-  //enable pullup resistor on pb6 and pb7
-  *portB= 0xC0;
+  //temp and humidity sensor
+  int chk = DHT.read11(DHT11_PIN);
+  lcd.setCursor(0,0);
+  lcd.print("Temperature=");
+  lcd.print(DHT.temperature);
+  lcd.setCursor(0,1);
+  lcd.print("Humidity = ");
+  lcd.print(DHT.humidity);
 
+  
+  //ADC, water sensor
+  adc_init();
+  //set ph4(pin 7) as output
+  *portDDRH |= 0b00010000;
+  //set ph4(pin 7) to HIGH
+  *portH |= 0b00010000;
+
+  //stepper motor
+  //set pb6(pin 12) and pb7(pin 13) to input, stepper motor button
+  *portDDRB &= 0x3F;
+  //enable pullup resistor on pb6(pin 12) and pb7(pin 13), stepper motor button
+  *portB |= 0xC0;
+
+  //fan motor
+  //set PA0(pin 22), PA2(pin24), PA4(pin26) to output
+  *portDDRA |= 0b00010101;
+  
   //UART
   U0init(9600);
 
   //button, ISR
-  //set PD3(pin 18) to input, becomes the button pin
+  //set PD3(pin 18) to input, the button pin
   *portDDRD &= 0b11110111;
-  attachInterrupt(digitalPinToInterrupt(18), StartStopButtonISR, LOW);
+  //enable pullup on PD3(pin 18)
+  *portD |= 0b00001000;
+  attachInterrupt(digitalPinToInterrupt(18), StartStopButtonISR, CHANGE);
 }
 
 void loop() {
-
-  TempAndHumiditySensor();
-
-  FanMotor();
-
-  StepperMotor();
-
-  WaterSensor();
-
-  RTCModule();
+  //Run only when the button has been pressed, and do not run when button is pressed again
+  if(buttonPressed ==true){
+    TempAndHumiditySensor();
+    FanMotor();
+    StepperMotor();
+    WaterSensor();
+    RTCModule();
+  };
 }
 
 //water sensor
@@ -166,13 +184,14 @@ void U0putchar(unsigned char U0pdata)
   while((*myUCSR0A & TBE)==0);
   *myUDR0 = U0pdata;
 }
-
 void printString(const char* message){
   for(int i = 0; message[i] != '\0'; i++){
     U0putchar(message[i]);
   }
 }
 
+
+//temp and humdity sensor
 void TempAndHumiditySensor(){
 
   int chk = DHT.read11(DHT11_PIN);
@@ -181,7 +200,6 @@ void TempAndHumiditySensor(){
   if(currentTime - lastUpdateTime >= updateInterval){
     
     //print to LCD
-
     lcd.setCursor(0,0);
     lcd.print("Temperature=");
     lcd.print(DHT.temperature);
@@ -193,37 +211,40 @@ void TempAndHumiditySensor(){
   }
 }
 
+//water sensor
 void WaterSensor(){
   unsigned int waterVal= adc_read(0);
   checkWaterLevel(waterVal);
 }
-
 void checkWaterLevel(unsigned int input){
   if(input < 300){
     printString("Water level is too low");
-    //set ph3 high
+    //set ph3 high for red LED, need to change port***
     *portH |= 0x8;
     //delay(1000);
   }
   else{
-    //set ph3 low
+    //set ph3 low for red LED, need to change port***
     *portH &= 0xF7;
   }
 }
 
+//fan motor
 void FanMotor(){
+  //dir1 = pin 24
+  //dir2 = pin 26
+  //speedPin = pin22
 
-  /*
-  digitalWrite(dir1, HIGH);
-  digitalWrite(dir2, LOW);
-  analogWrite(speedPin, HIGH);
-  */
+  //digitalWrite(dir1, HIGH);
+  //digitalWrite(dir2, LOW);
+  //analogWrite(speedPin, HIGH); 
 
   *portA |= 0b00000100;
   *portA &= 0b11101111;
   *portA |= 0b00000001;
 }
 
+//stepper motor
 void StepperMotor(){
   if(*pin_b & 0x80){
     printString("Vent position change at:");
@@ -244,7 +265,7 @@ void RTCModule(){
   //RTC module
   if (! rtc.begin()) {
     printString("Couldn't find RTC");
-    //Serial.flush();
+    Serial.flush();
     while (1);
   }
   rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
@@ -252,28 +273,34 @@ void RTCModule(){
 void displayCurrentTime(){
   DateTime now = rtc.now();
   printString("Date & Time: ");
-  printString(now.year(), DEC);
+  Serial.print(now.year(), DEC);
   printString('/');
-  printString(now.month(), DEC);
+  Serial.print(now.month(), DEC);
   printString('/');
-  printString(now.day(), DEC);
+  Serial.print(now.day(), DEC);
   printString(" (");
-  printString(daysOfTheWeek[now.dayOfTheWeek()]);
+  Serial.print(daysOfTheWeek[now.dayOfTheWeek()]);
   printString(") ");
-  printString(now.hour(), DEC);
+  Serial.print(now.hour(), DEC);
   printString(':');
-  printString(now.minute(), DEC);
+  Serial.print(now.minute(), DEC);
   printString(':');
-  printString(now.second(), DEC);
+  Serial.print(now.second(), DEC);
 }
 
 //button, ISR
-void StartStopButtonISR(){
-  //if pin18 is LOW
-  if((*pin_a & 0b00001000) == 0){
-    buttonPressed = true;8
-  }
-  else{
-    buttonPressed = false;
+void StartStopButtonISR() {
+  // Read the current state of the button
+  bool buttonState = (*pin_d & 0b00001000) == 0;
+
+  // Check if the button state has changed
+  if (buttonState != buttonPrevState) {
+    // Update the buttonPressed flag only on button press
+    if (buttonState) {
+      buttonPressed = !buttonPressed; // Toggle the buttonPressed state
+    }
+
+    // Update the previous state
+    buttonPrevState = buttonState;
   }
 }
