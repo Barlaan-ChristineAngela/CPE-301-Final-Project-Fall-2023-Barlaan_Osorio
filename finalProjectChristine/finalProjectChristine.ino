@@ -62,7 +62,7 @@ volatile unsigned char *myUDR0   = (unsigned char*)0xC6;
 volatile unsigned char *portD = (unsigned char*) 0x2B;        //enable high (|= make 1s) or low (&= make 0s);
 volatile unsigned char *portDDRD = (unsigned char*) 0x2A;     //input (&= make 0s), output (|= make 1s)
 volatile unsigned char *pin_d = (unsigned char*) 0x29;        //read the state of the pin
-volatile bool buttonPressed = false;
+volatile bool startButtonPressed = false;
 
 void setup() {
   
@@ -80,7 +80,6 @@ void setup() {
   lcd.print("Humidity = ");
   lcd.print(DHT.humidity);
 
-  
   //ADC, water sensor
   adc_init();
   //set ph4(pin 7) as output
@@ -94,19 +93,27 @@ void setup() {
   //enable pullup resistor on pb6(pin 12) and pb7(pin 13), stepper motor button
   *portB |= 0xC0;
 
-  //fan motor
+  //fan motor, stop button, 
   //set PA0(pin 22), PA2(pin24), PA4(pin26) to output
   *portDDRA |= 0b00010101;
-  
-  //UART
-  U0init(9600);
 
-  //button, ISR
-  //set PD3(pin 18) to input, the button pin
+  /*
+  //start button, ISR
+  //set PD3(pin 18) to input, the start button
   *portDDRD &= 0b11110111;
   //enable pullup on PD3(pin 18)
   *portD |= 0b00001000;
-  attachInterrupt(digitalPinToInterrupt(18), StartStopButtonISR, LOW);
+  attachInterrupt(digitalPinToInterrupt(18), StartButtonISR, LOW);
+  */
+
+  //stop button
+  //set PA3(pin 25) to input, the stop button
+  *portDDRA &= 0b11110111;
+  //enable pullup on PA3(pin25)
+  *portA |= 0b00001000;
+
+  //UART
+  U0init(9600);
 
   //RTC Module
   if (! rtc.begin()) {
@@ -118,12 +125,10 @@ void setup() {
 }
 
 void loop() {
-  if(buttonPressed == true){
-    TempAndHumiditySensor();
-    FanMotor();
-    StepperMotor();
-    WaterSensor();
-  }
+  FanMotor();
+  TempAndHumiditySensor();
+  WaterSensor();
+  StepperMotor();
 }
 
 //water sensor
@@ -260,7 +265,7 @@ void StepperMotor(){
 }
 
 //RTC module
-/*void RTCModule(){
+void RTCModule(){
   //RTC module
   if (! rtc.begin()) {
     printString("Couldn't find RTC");
@@ -269,7 +274,7 @@ void StepperMotor(){
   }
   rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
 }
-*/
+
 void displayCurrentTime(){
   DateTime now = rtc.now();
   Serial.print("Date & Time: ");
@@ -288,13 +293,26 @@ void displayCurrentTime(){
   Serial.println(now.second(), DEC);
 }
 
-//button, ISR
-void StartStopButtonISR(){
+/*
+//start button, ISR
+void StartButtonISR(){
   //if pin18 is LOW
-  if((*pin_a & 0b00001000) == 0){
-    buttonPressed = true;
+  if((*pin_d & 0b00001000) == 0){
+    startButtonPressed = true;
   }
   else{
-    buttonPressed = false;
+    startButtonPressed = false;
   }
 }
+
+//stop button
+void StopButton(){
+  //if pin25 is LOW
+  if((*pin_a & 0b00001000) == 0){
+    stopButtonPressed = true;
+  }
+  else{
+    stopButtonPressed = false;
+  }
+}
+*/
