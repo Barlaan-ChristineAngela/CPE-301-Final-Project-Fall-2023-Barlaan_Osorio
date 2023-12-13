@@ -63,9 +63,10 @@ volatile unsigned char *portD = (unsigned char*) 0x2B;        //enable high (|= 
 volatile unsigned char *portDDRD = (unsigned char*) 0x2A;     //input (&= make 0s), output (|= make 1s)
 volatile unsigned char *pin_d = (unsigned char*) 0x29;        //read the state of the pin
 volatile bool buttonPressed = false;
-volatile bool buttonPrevState = false;
 
 void setup() {
+  
+  Serial.begin(9600);
 
   //LCD
   lcd.begin(16,2);
@@ -105,18 +106,24 @@ void setup() {
   *portDDRD &= 0b11110111;
   //enable pullup on PD3(pin 18)
   *portD |= 0b00001000;
-  attachInterrupt(digitalPinToInterrupt(18), StartStopButtonISR, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(18), StartStopButtonISR, LOW);
+
+  //RTC Module
+  if (! rtc.begin()) {
+    Serial.println("Couldn't find RTC");
+    Serial.flush();
+    while (1);
+  }
+  rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
 }
 
 void loop() {
-  //Run only when the button has been pressed, and do not run when button is pressed again
-  if(buttonPressed ==true){
+  if(buttonPressed == true){
     TempAndHumiditySensor();
     FanMotor();
     StepperMotor();
     WaterSensor();
-    RTCModule();
-  };
+  }
 }
 
 //water sensor
@@ -218,10 +225,10 @@ void WaterSensor(){
 }
 void checkWaterLevel(unsigned int input){
   if(input < 300){
-    printString("Water level is too low");
+    Serial.println("Water level is too low");
     //set ph3 high for red LED, need to change port***
     *portH |= 0x8;
-    //delay(1000);
+    delay(1000);
   }
   else{
     //set ph3 low for red LED, need to change port***
@@ -231,14 +238,6 @@ void checkWaterLevel(unsigned int input){
 
 //fan motor
 void FanMotor(){
-  //dir1 = pin 24
-  //dir2 = pin 26
-  //speedPin = pin22
-
-  //digitalWrite(dir1, HIGH);
-  //digitalWrite(dir2, LOW);
-  //analogWrite(speedPin, HIGH); 
-
   *portA |= 0b00000100;
   *portA &= 0b11101111;
   *portA |= 0b00000001;
@@ -261,7 +260,7 @@ void StepperMotor(){
 }
 
 //RTC module
-void RTCModule(){
+/*void RTCModule(){
   //RTC module
   if (! rtc.begin()) {
     printString("Couldn't find RTC");
@@ -270,37 +269,32 @@ void RTCModule(){
   }
   rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
 }
+*/
 void displayCurrentTime(){
   DateTime now = rtc.now();
-  printString("Date & Time: ");
+  Serial.print("Date & Time: ");
   Serial.print(now.year(), DEC);
-  printString('/');
+  Serial.print('/');
   Serial.print(now.month(), DEC);
-  printString('/');
+  Serial.print('/');
   Serial.print(now.day(), DEC);
-  printString(" (");
+  Serial.print(" (");
   Serial.print(daysOfTheWeek[now.dayOfTheWeek()]);
-  printString(") ");
+  Serial.print(") ");
   Serial.print(now.hour(), DEC);
-  printString(':');
+  Serial.print(':');
   Serial.print(now.minute(), DEC);
-  printString(':');
-  Serial.print(now.second(), DEC);
+  Serial.print(':');
+  Serial.println(now.second(), DEC);
 }
 
 //button, ISR
-void StartStopButtonISR() {
-  // Read the current state of the button
-  bool buttonState = (*pin_d & 0b00001000) == 0;
-
-  // Check if the button state has changed
-  if (buttonState != buttonPrevState) {
-    // Update the buttonPressed flag only on button press
-    if (buttonState) {
-      buttonPressed = !buttonPressed; // Toggle the buttonPressed state
-    }
-
-    // Update the previous state
-    buttonPrevState = buttonState;
+void StartStopButtonISR(){
+  //if pin18 is LOW
+  if((*pin_a & 0b00001000) == 0){
+    buttonPressed = true;
+  }
+  else{
+    buttonPressed = false;
   }
 }
