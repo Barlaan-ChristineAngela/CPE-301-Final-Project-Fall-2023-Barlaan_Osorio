@@ -30,7 +30,7 @@ volatile unsigned char *portA = (unsigned char*) 0x22;        //enable high (|= 
 volatile unsigned char *portDDRA = (unsigned char*) 0x21;     //input (&= make 0s), output (|= make 1s)
 volatile unsigned char *pin_a = (unsigned char*) 0x20;        //read the state of the pin
 
-//stepper motor
+//stepper motor and LEDs
 const int stepsPerRevolution = 2038; //stepper motor
 Stepper myStepper = Stepper(stepsPerRevolution, 8, 10, 9, 11); //stepper motor
 volatile unsigned char *portB = (unsigned char *) 0x25; //stepper motor
@@ -99,6 +99,10 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(2), StartButtonISR, CHANGE);
   attachInterrupt(digitalPinToInterrupt(3), StopButtonISR, CHANGE);
 
+  //LEDs, all outputs
+  //Red, PB3(pin 50); Yellow, PB2(pin 51); Blue, PB1(pin 52); Green, PB0(pin 53)
+  *portDDRB |= 0b00001111;
+
   //RTC Module
   if (! rtc.begin()) {
     Serial.println("Couldn't find RTC");
@@ -109,10 +113,22 @@ void setup() {
 }
 
 void loop() {
+
   FanMotor();
   TempAndHumiditySensor();
   WaterSensor();
   StepperMotor();
+
+  if(disabled == true){
+    //high for PB2 yellow LED
+    *portB |= 0b000000100;
+  }
+  if(disabled == false){
+    //low for PB2 yellow LED
+    *portB &= 0b11111011;
+    //high for PB1 blue LED
+    *portB |= 0b00000010;
+  }
 }
 
 //water sensor
@@ -198,13 +214,17 @@ void TempAndHumiditySensor(){
   }
   if(disabled == false){
 
-    lcd.setCursor(0,0);
-    lcd.print("Temperature=");
-    lcd.print(DHT.temperature);
-    lcd.setCursor(0,1);
-    lcd.print("Humidity = ");
-    lcd.print(DHT.humidity);
+    bool firstIteration = true;
+    if(firstIteration == true){
+      lcd.setCursor(0,0);
+      lcd.print("Temperature=");
+      lcd.print(DHT.temperature);
+      lcd.setCursor(0,1);
+      lcd.print("Humidity = ");
+      lcd.print(DHT.humidity);
 
+      firstIteration = false;
+    }
     if(currentTime - lastUpdateTime >= updateInterval){
       //print to LCD
       lcd.setCursor(0,0);
@@ -225,41 +245,67 @@ void WaterSensor(){
   if(disabled == false){
     unsigned int waterVal= adc_read(0);
     checkWaterLevel(waterVal);
+    if(waterVal > 350){
+      //set PB3 high for red LED
+      *portB |= 0b00001000;
+      //set PB2, PB1, PB0 to low
+      *portB &= 0b11111000;
+      lcd.clear();
+      lcd.setCursor(0,0);
+      lcd.print("ERROR");
+    }
+  }
+  if(disabled == true){
+    //set PB0 low for green LED
+    *portB &= 0x111111110;
   }
 }
 void checkWaterLevel(unsigned int input){
   if(input < 300){
     Serial.println("Water level is too low");
-    //set ph3 high for red LED, need to change port***
-    *portH |= 0x8;
-    delay(1000);
+    //set PB0 low for green LED
+    *portB &= 0b111111110;
+    //set PB3 high for red LED
+    *portB |= 0b000001000;
+    //delay(1000);
   }
   else{
-    //set ph3 low for red LED, need to change port***
-    *portH &= 0xF7;
+    //set PB0 high for green LED
+    *portB |= 0b000000001;
+    //set PB3 low for red LED
+    *portB &= 0b11110111; 
   }
 }
 
 //fan motor
 void FanMotor(){
-  *portA |= 0b00000100;
-  *portA &= 0b11101111;
-  *portA |= 0b00000001;
+  if(disabled == true){
+    *portA &= 0b11111011;
+    *portA &= 0b11101111;
+    *portA &= 0b11111110;
+  }
+  if(disabled == false){
+    *portA |= 0b00000100;
+    *portA &= 0b11101111;
+    *portA |= 0b00000001;
+  }
 }
 
 //stepper motor
 void StepperMotor(){
-  if(*pin_b & 0x80){
-    printString("Vent position change at:");
-    displayCurrentTime();
-    myStepper.setSpeed(10);
-    myStepper.step(stepsPerRevolution);
-  }
-  if(*pin_b & 0x40){
-    printString("Vent position change at:");
-    displayCurrentTime();
-    myStepper.setSpeed(10);
-    myStepper.step(-stepsPerRevolution);
+  if(disabled == false){
+    if(*pin_b & 0x80){
+      Serial.print("Vent position change at:");
+      displayCurrentTime();
+      myStepper.setSpeed(10);
+      myStepper.step(stepsPerRevolution);
+    }
+    if(*pin_b & 0x40){
+      Serial.print("Vent position change at:");
+      displayCurrentTime();
+      myStepper.setSpeed(10);
+      myStepper.step(-stepsPerRevolution);
+    }
   }
 }
 
@@ -291,7 +337,6 @@ void displayCurrentTime(){
   Serial.print(':');
   Serial.println(now.second(), DEC);
 }
-
 
 //start button, ISR
 void StartButtonISR(){
