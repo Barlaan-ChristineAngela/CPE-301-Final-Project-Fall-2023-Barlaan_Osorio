@@ -25,7 +25,7 @@ volatile unsigned char* my_ADCSRB = (unsigned char*) 0x7B;
 volatile unsigned char* my_ADCSRA = (unsigned char*) 0x7A;
 volatile unsigned int* my_ADC_DATA = (unsigned int*) 0x78;
 
-//fan motor
+//fan motor, stop button
 volatile unsigned char *portA = (unsigned char*) 0x22;        //enable high (|= make 1s) or low (&= make 0s);
 volatile unsigned char *portDDRA = (unsigned char*) 0x21;     //input (&= make 0s), output (|= make 1s)
 volatile unsigned char *pin_a = (unsigned char*) 0x20;        //read the state of the pin
@@ -58,27 +58,21 @@ volatile unsigned char *myUCSR0C = (unsigned char*)0xC2;
 volatile unsigned int  *myUBRR0  = (unsigned int*) 0xC4;
 volatile unsigned char *myUDR0   = (unsigned char*)0xC6;
 
-//button, ISR
-volatile unsigned char *portD = (unsigned char*) 0x2B;        //enable high (|= make 1s) or low (&= make 0s);
-volatile unsigned char *portDDRD = (unsigned char*) 0x2A;     //input (&= make 0s), output (|= make 1s)
-volatile unsigned char *pin_d = (unsigned char*) 0x29;        //read the state of the pin
-volatile bool startButtonPressed = false;
+//start button, ISR
+volatile unsigned char *portE = (unsigned char*) 0x2E;        //enable high (|= make 1s) or low (&= make 0s);
+volatile unsigned char *portDDRE = (unsigned char*) 0x2D;     //input (&= make 0s), output (|= make 1s)
+volatile unsigned char *pin_e = (unsigned char*) 0x2C;        //read the state of the pin
+volatile bool disabled = false;
 
 void setup() {
   
   Serial.begin(9600);
 
+  //UART
+  U0init(9600);
+
   //LCD
   lcd.begin(16,2);
-
-  //temp and humidity sensor
-  int chk = DHT.read11(DHT11_PIN);
-  lcd.setCursor(0,0);
-  lcd.print("Temperature=");
-  lcd.print(DHT.temperature);
-  lcd.setCursor(0,1);
-  lcd.print("Humidity = ");
-  lcd.print(DHT.humidity);
 
   //ADC, water sensor
   adc_init();
@@ -93,27 +87,17 @@ void setup() {
   //enable pullup resistor on pb6(pin 12) and pb7(pin 13), stepper motor button
   *portB |= 0xC0;
 
-  //fan motor, stop button, 
+  //fan motor
   //set PA0(pin 22), PA2(pin24), PA4(pin26) to output
   *portDDRA |= 0b00010101;
 
-  /*
-  //start button, ISR
-  //set PD3(pin 18) to input, the start button
-  *portDDRD &= 0b11110111;
-  //enable pullup on PD3(pin 18)
-  *portD |= 0b00001000;
-  attachInterrupt(digitalPinToInterrupt(18), StartButtonISR, LOW);
-  */
-
-  //stop button
-  //set PA3(pin 25) to input, the stop button
-  *portDDRA &= 0b11110111;
-  //enable pullup on PA3(pin25)
-  *portA |= 0b00001000;
-
-  //UART
-  U0init(9600);
+  //start button and stop button, ISR
+  //set PE4(pin 2) to input, the start button; PE5(pin 3) to input, the stop button
+  *portDDRE &= 0b11001111;
+  //enable pullup on PE4(pin 2) and PE5(pin 3)
+  *portE |= 0b00110000;
+  attachInterrupt(digitalPinToInterrupt(2), StartButtonISR, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(3), StopButtonISR, CHANGE);
 
   //RTC Module
   if (! rtc.begin()) {
@@ -207,11 +191,13 @@ void printString(const char* message){
 void TempAndHumiditySensor(){
 
   int chk = DHT.read11(DHT11_PIN);
-
   unsigned long currentTime = millis();
-  if(currentTime - lastUpdateTime >= updateInterval){
-    
-    //print to LCD
+
+  if(disabled == true){
+    lcd.clear();
+  }
+  if(disabled == false){
+
     lcd.setCursor(0,0);
     lcd.print("Temperature=");
     lcd.print(DHT.temperature);
@@ -219,14 +205,27 @@ void TempAndHumiditySensor(){
     lcd.print("Humidity = ");
     lcd.print(DHT.humidity);
 
-    lastUpdateTime = currentTime;
+    if(currentTime - lastUpdateTime >= updateInterval){
+      //print to LCD
+      lcd.setCursor(0,0);
+      lcd.print("Temperature=");
+      lcd.print(DHT.temperature);
+      lcd.setCursor(0,1);
+      lcd.print("Humidity = ");
+      lcd.print(DHT.humidity);
+
+      lastUpdateTime = currentTime;
+    }
   }
+  
 }
 
 //water sensor
 void WaterSensor(){
-  unsigned int waterVal= adc_read(0);
-  checkWaterLevel(waterVal);
+  if(disabled == false){
+    unsigned int waterVal= adc_read(0);
+    checkWaterLevel(waterVal);
+  }
 }
 void checkWaterLevel(unsigned int input){
   if(input < 300){
@@ -293,26 +292,16 @@ void displayCurrentTime(){
   Serial.println(now.second(), DEC);
 }
 
-/*
+
 //start button, ISR
 void StartButtonISR(){
-  //if pin18 is LOW
-  if((*pin_d & 0b00001000) == 0){
-    startButtonPressed = true;
-  }
-  else{
-    startButtonPressed = false;
+  if((*pin_e & 0b00010000) == 0){
+    disabled = false;
   }
 }
 
-//stop button
-void StopButton(){
-  //if pin25 is LOW
-  if((*pin_a & 0b00001000) == 0){
-    stopButtonPressed = true;
-  }
-  else{
-    stopButtonPressed = false;
+void StopButtonISR(){
+  if((*pin_e & 0b00100000) == 0){
+    disabled = true;
   }
 }
-*/
