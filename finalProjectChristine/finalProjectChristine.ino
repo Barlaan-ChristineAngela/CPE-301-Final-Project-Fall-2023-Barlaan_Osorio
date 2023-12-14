@@ -122,10 +122,8 @@ void loop() {
   if(disabled == true){
     //high for PB2 yellow LED
     *portB |= 0b000000100;
-  }
-  if(disabled == false){
-    //low for PB2 yellow LED
-    *portB &= 0b11111011;
+    Serial.println("DISABLED");
+    delay(1000);
   }
 }
 
@@ -213,16 +211,6 @@ void TempAndHumiditySensor(){
   if(disabled == false){
 
     bool firstIteration = true;
-    if(firstIteration == true){
-      lcd.setCursor(0,0);
-      lcd.print("Temperature=");
-      lcd.print(DHT.temperature);
-      lcd.setCursor(0,1);
-      lcd.print("Humidity = ");
-      lcd.print(DHT.humidity);
-
-      firstIteration = false;
-    }
     if(currentTime - lastUpdateTime >= updateInterval){
       //print to LCD
       lcd.setCursor(0,0);
@@ -234,8 +222,7 @@ void TempAndHumiditySensor(){
 
       lastUpdateTime = currentTime;
     }
-  }
-  
+  } 
 }
 
 //water sensor
@@ -243,36 +230,31 @@ void WaterSensor(){
   if(disabled == false){
     unsigned int waterVal= adc_read(0);
     checkWaterLevel(waterVal);
-    if(waterVal > 380){
-      disabled = true;
-      //set PB3 high for red LED
-      *portB |= 0b00001000;
-      //set PB2, PB1, PB0 to low
-      *portB &= 0b11111000;
-      lcd.clear();
-      lcd.setCursor(0,0);
-      lcd.print("ERROR");
-    }
-  }
-  if(disabled == true){
-    //set PB0 low for green LED
-    *portB &= 0x111111110;
   }
 }
 void checkWaterLevel(unsigned int input){
   if(input < 300){
     Serial.println("Water level is too low");
-    //set PB0 and PB1 low for red and blue LED
-    *portB &= 0b111110101;
-    //set PB0 high for green LED
-    *portB |= 0b00000001;
-    //delay(1000);
+    //set PB0 and PB1 low for green and blue LED
+    *portB &= 0b11111100;
+    //set PB3 high for red LED
+    *portB |= 0b00001000;
+    lcd.clear();
+    lcd.setCursor(0,0);
+    lcd.print("ERROR");
+    delay(1000);
   }
-  if(input > 300 && input < 380){
-    //set PB3 and PB0 low for red and green LED
-    *portB &= 0b11110110; 
+  if(input > 301 && input < 380){
+    //set PB3 and PB2 and PB0 low for red and yellow and green LED
+    *portB &= 0b11110010; 
     //set PB1 high for blue LED
     *portB |= 0b00000010;
+  }
+  if(input > 380){
+    //set PB2 high for yellow LED
+    *portB |= 0b00000100;
+    //set PB3, PB1, PB0 to low
+    *portB &= 0b11110100;
   }
 }
 
