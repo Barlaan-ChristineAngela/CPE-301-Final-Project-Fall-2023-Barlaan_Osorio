@@ -126,8 +126,6 @@ void loop() {
   if(disabled == false){
     //low for PB2 yellow LED
     *portB &= 0b11111011;
-    //high for PB1 blue LED
-    *portB |= 0b00000010;
   }
 }
 
@@ -245,7 +243,8 @@ void WaterSensor(){
   if(disabled == false){
     unsigned int waterVal= adc_read(0);
     checkWaterLevel(waterVal);
-    if(waterVal > 350){
+    if(waterVal > 380){
+      disabled = true;
       //set PB3 high for red LED
       *portB |= 0b00001000;
       //set PB2, PB1, PB0 to low
@@ -263,28 +262,30 @@ void WaterSensor(){
 void checkWaterLevel(unsigned int input){
   if(input < 300){
     Serial.println("Water level is too low");
-    //set PB0 low for green LED
-    *portB &= 0b111111110;
-    //set PB3 high for red LED
-    *portB |= 0b000001000;
+    //set PB0 and PB1 low for red and blue LED
+    *portB &= 0b111110101;
+    //set PB0 high for green LED
+    *portB |= 0b00000001;
     //delay(1000);
   }
-  else{
-    //set PB0 high for green LED
-    *portB |= 0b000000001;
-    //set PB3 low for red LED
-    *portB &= 0b11110111; 
+  if(input > 300 && input < 380){
+    //set PB3 and PB0 low for red and green LED
+    *portB &= 0b11110110; 
+    //set PB1 high for blue LED
+    *portB |= 0b00000010;
   }
 }
 
 //fan motor
 void FanMotor(){
   if(disabled == true){
+    //turn off fan
     *portA &= 0b11111011;
     *portA &= 0b11101111;
     *portA &= 0b11111110;
   }
   if(disabled == false){
+    //turn on fan
     *portA |= 0b00000100;
     *portA &= 0b11101111;
     *portA |= 0b00000001;
